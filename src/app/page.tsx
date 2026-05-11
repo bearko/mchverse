@@ -4,13 +4,11 @@ import { useEffect, useState } from 'react';
 import {
   useAccount,
   useChainId,
-  useConnect,
-  useDisconnect,
   useReadContract,
   useReadContracts,
   useSignMessage,
-  useSwitchChain,
 } from 'wagmi';
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { SiweMessage } from 'siwe';
 import { erc20Abi, formatUnits } from 'viem';
 import { mchVerse } from '@/lib/chains';
@@ -25,6 +23,8 @@ type NftItem = {
   id?: string;
   token_id?: string;
   token?: { name?: string; symbol?: string; address?: string; type?: string };
+  metadata?: { name?: string; image?: string } | null;
+  image_url?: string | null;
 };
 
 type Catalog = { matched: ExplorerToken[]; total: number; byType: Record<string, number> };
@@ -32,9 +32,6 @@ type Catalog = { matched: ExplorerToken[]; total: number; byType: Record<string,
 export default function Home() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
-  const { connectors, connect, isPending: connecting, error: connectError } = useConnect();
-  const { disconnect } = useDisconnect();
-  const { switchChain } = useSwitchChain();
   const { signMessageAsync } = useSignMessage();
 
   const [session, setSession] = useState<SessionState | null>(null);
@@ -165,34 +162,11 @@ export default function Home() {
 
       <section style={{ marginTop: 16 }}>
         <h2>1. Wallet</h2>
-        {!isConnected ? (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {connectors.map((c) => (
-              <button
-                key={c.uid}
-                onClick={() => connect({ connector: c, chainId: mchVerse.id })}
-                disabled={connecting}
-              >
-                Connect with {c.name}
-              </button>
-            ))}
-            {connectError && <p style={{ color: 'red' }}>{connectError.message}</p>}
-          </div>
-        ) : (
-          <div>
-            <p>
-              Address: <code>{address}</code>
-            </p>
-            {onWrongChain && (
-              <p style={{ color: 'orange' }}>
-                Wrong chain.{' '}
-                <button onClick={() => switchChain({ chainId: mchVerse.id })}>
-                  Switch to MCH Verse
-                </button>
-              </p>
-            )}
-            <button onClick={() => disconnect()}>Disconnect</button>
-          </div>
+        <ConnectButton showBalance={false} chainStatus="full" />
+        {address && (
+          <p style={{ marginTop: 8 }}>
+            Address: <code>{address}</code>
+          </p>
         )}
       </section>
 
@@ -295,14 +269,24 @@ export default function Home() {
           {nfts.length === 0 ? (
             <p>No NFTs found.</p>
           ) : (
-            <ul>
-              {nfts.map((it, i) => (
-                <li key={i}>
-                  <code>{it.token?.symbol ?? it.token?.name ?? 'token'}</code> #
-                  {it.id ?? it.token_id} — <code>{it.token?.address}</code> (
-                  {it.token?.type})
-                </li>
-              ))}
+            <ul style={{ paddingLeft: 18 }}>
+              {nfts.map((it, i) => {
+                const collection = it.token?.name ?? 'Unknown collection';
+                const symbol = it.token?.symbol;
+                const tokenId = it.id ?? it.token_id ?? '?';
+                const instanceName = it.metadata?.name;
+                return (
+                  <li key={i} style={{ marginBottom: 8 }}>
+                    <strong>{collection}</strong>
+                    {symbol && <> ({symbol})</>} #{tokenId}
+                    {instanceName && <> — {instanceName}</>}
+                    <br />
+                    <small>
+                      <code>{it.token?.address}</code> ({it.token?.type})
+                    </small>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
