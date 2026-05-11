@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { SiweMessage } from 'siwe';
-import { consumeNonce } from '@/lib/nonceStore';
+import { NONCE_COOKIE, verifyNonce } from '@/lib/nonceStore';
 import { issueSession, SESSION_COOKIE } from '@/lib/session';
 
 const EXPECTED_CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? 29548);
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
   let parsed: SiweMessage;
   try {
     parsed = new SiweMessage(message);
-  } catch (e) {
+  } catch {
     return NextResponse.json({ error: 'malformed SIWE message' }, { status: 400 });
   }
 
@@ -27,7 +28,9 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  if (!consumeNonce(parsed.nonce)) {
+
+  const nonceCookie = (await cookies()).get(NONCE_COOKIE)?.value;
+  if (!(await verifyNonce(nonceCookie, parsed.nonce))) {
     return NextResponse.json({ error: 'invalid or expired nonce' }, { status: 400 });
   }
 
@@ -46,5 +49,6 @@ export async function POST(req: NextRequest) {
     path: '/',
     maxAge: 60 * 60 * 24 * 7,
   });
+  res.cookies.delete(NONCE_COOKIE);
   return res;
 }

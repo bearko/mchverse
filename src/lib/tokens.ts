@@ -1,0 +1,1 @@
+export const MCHC_ADDRESS = '0x9e5AAC1Ba1a2e6aEd6b32689DFcF62A509Ca96f3' as const;

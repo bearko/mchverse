@@ -6,11 +6,15 @@ import {
   useChainId,
   useConnect,
   useDisconnect,
+  useReadContract,
+  useReadContracts,
   useSignMessage,
   useSwitchChain,
 } from 'wagmi';
 import { SiweMessage } from 'siwe';
+import { erc20Abi, formatUnits } from 'viem';
 import { mchVerse } from '@/lib/chains';
+import { MCHC_ADDRESS } from '@/lib/tokens';
 
 type SessionState =
   | { authenticated: true; address: `0x${string}`; chainId: number }
@@ -34,6 +38,26 @@ export default function Home() {
   const [nfts, setNfts] = useState<NftItem[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const onMchVerse = chainId === mchVerse.id;
+
+  const mchcMeta = useReadContracts({
+    allowFailure: false,
+    contracts: [
+      { address: MCHC_ADDRESS, abi: erc20Abi, functionName: 'symbol', chainId: mchVerse.id },
+      { address: MCHC_ADDRESS, abi: erc20Abi, functionName: 'decimals', chainId: mchVerse.id },
+    ],
+    query: { staleTime: 60 * 60 * 1000 },
+  });
+
+  const mchcBalance = useReadContract({
+    address: MCHC_ADDRESS,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    chainId: mchVerse.id,
+    query: { enabled: !!address && onMchVerse },
+  });
 
   useEffect(() => {
     void refreshSession();
@@ -96,7 +120,12 @@ export default function Home() {
     }
   }
 
-  const onWrongChain = isConnected && chainId !== mchVerse.id;
+  const onWrongChain = isConnected && !onMchVerse;
+  const [mchcSymbol, mchcDecimals] = mchcMeta.data ?? [undefined, undefined];
+  const mchcDisplay =
+    mchcBalance.data !== undefined && mchcDecimals !== undefined
+      ? `${formatUnits(mchcBalance.data, mchcDecimals)} ${mchcSymbol ?? 'MCHC'}`
+      : null;
 
   return (
     <main
@@ -148,7 +177,27 @@ export default function Home() {
       </section>
 
       <section style={{ marginTop: 24 }}>
-        <h2>2. Session (SIWE)</h2>
+        <h2>2. On-chain read (viem readContract)</h2>
+        <p>
+          Contract: <code>{MCHC_ADDRESS}</code>
+        </p>
+        {!isConnected ? (
+          <p>Connect a wallet to read your balance.</p>
+        ) : onWrongChain ? (
+          <p>Switch to MCH Verse to read your balance.</p>
+        ) : mchcBalance.isLoading ? (
+          <p>Loading balance…</p>
+        ) : mchcBalance.error ? (
+          <p style={{ color: 'red' }}>RPC error: {mchcBalance.error.message}</p>
+        ) : (
+          <p>
+            balanceOf(you) = <strong>{mchcDisplay ?? '-'}</strong>
+          </p>
+        )}
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <h2>3. Session (SIWE)</h2>
         {session?.authenticated ? (
           <>
             <p>
@@ -169,7 +218,7 @@ export default function Home() {
 
       {nfts && (
         <section style={{ marginTop: 24 }}>
-          <h2>3. NFTs ({nfts.length})</h2>
+          <h2>4. NFTs ({nfts.length})</h2>
           {nfts.length === 0 ? (
             <p>No NFTs found.</p>
           ) : (
