@@ -15,6 +15,7 @@ import { SiweMessage } from 'siwe';
 import { erc20Abi, formatUnits } from 'viem';
 import { mchVerse } from '@/lib/chains';
 import { MCHC_ADDRESS } from '@/lib/tokens';
+import type { ExplorerToken } from '@/lib/explorerTokens';
 
 type SessionState =
   | { authenticated: true; address: `0x${string}`; chainId: number }
@@ -26,6 +27,8 @@ type NftItem = {
   token?: { name?: string; symbol?: string; address?: string; type?: string };
 };
 
+type Catalog = { matched: ExplorerToken[]; total: number; byType: Record<string, number> };
+
 export default function Home() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
@@ -36,6 +39,8 @@ export default function Home() {
 
   const [session, setSession] = useState<SessionState | null>(null);
   const [nfts, setNfts] = useState<NftItem[] | null>(null);
+  const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [catalogBusy, setCatalogBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -104,6 +109,21 @@ export default function Home() {
     await fetch('/api/auth/logout', { method: 'POST' });
     setNfts(null);
     await refreshSession();
+  }
+
+  async function loadCatalog(all: boolean) {
+    setError(null);
+    setCatalogBusy(true);
+    try {
+      const q = all ? '?all=1' : '';
+      const r = await fetch(`/api/tokens/mch${q}`, { cache: 'no-store' });
+      if (!r.ok) throw new Error(`catalog failed: ${r.status} ${await r.text()}`);
+      setCatalog(await r.json());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCatalogBusy(false);
+    }
   }
 
   async function loadNfts() {
@@ -216,9 +236,62 @@ export default function Home() {
         {error && <p style={{ color: 'red' }}>{error}</p>}
       </section>
 
+      <section style={{ marginTop: 24 }}>
+        <h2>4. MCH token catalog (Explorer /api/v2/tokens)</h2>
+        <p>
+          Paginates Blockscout v2 for ERC-20/721/1155 and filters by keyword
+          (mch, hero, land, extension, achievement, gum).
+        </p>
+        <button onClick={() => loadCatalog(false)} disabled={catalogBusy}>
+          {catalogBusy ? 'Loading…' : 'List MCH-related tokens'}
+        </button>
+        <button
+          onClick={() => loadCatalog(true)}
+          disabled={catalogBusy}
+          style={{ marginLeft: 8 }}
+        >
+          List all tokens
+        </button>
+        {catalog && (
+          <>
+            <p style={{ marginTop: 8 }}>
+              Matched <strong>{catalog.matched.length}</strong> / scanned{' '}
+              <strong>{catalog.total}</strong> (
+              {Object.entries(catalog.byType).map(([k, v]) => `${k}=${v}`).join(', ')})
+            </p>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>
+                    <th>Type</th>
+                    <th>Symbol</th>
+                    <th>Name</th>
+                    <th>Holders</th>
+                    <th>Address</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {catalog.matched.map((t) => (
+                    <tr key={t.address} style={{ borderBottom: '1px solid #eee' }}>
+                      <td>{t.type}</td>
+                      <td>{t.symbol ?? '-'}</td>
+                      <td>{t.name ?? '-'}</td>
+                      <td>{t.holders ?? '-'}</td>
+                      <td>
+                        <code>{t.address}</code>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
+
       {nfts && (
         <section style={{ marginTop: 24 }}>
-          <h2>4. NFTs ({nfts.length})</h2>
+          <h2>5. NFTs ({nfts.length})</h2>
           {nfts.length === 0 ? (
             <p>No NFTs found.</p>
           ) : (

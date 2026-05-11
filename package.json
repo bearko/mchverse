@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "list:tokens": "tsx scripts/list-mch-tokens.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.59.0",
@@ -22,6 +23,7 @@
     "@types/node": "^22.9.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }
 }
