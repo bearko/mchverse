@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   useAccount,
   useChainId,
@@ -22,12 +22,74 @@ type SessionState =
 type NftItem = {
   id?: string;
   token_id?: string;
-  token?: { name?: string; symbol?: string; address?: string; type?: string };
-  metadata?: { name?: string; image?: string } | null;
+  token_type?: string;
+  value?: string;
+  token?: {
+    name?: string;
+    symbol?: string;
+    address?: string;
+    type?: string;
+    icon_url?: string | null;
+  };
+  metadata?: {
+    name?: string;
+    image?: string;
+    description?: string;
+    attributes?: Array<{ trait_type?: string; value?: unknown }>;
+  } | null;
   image_url?: string | null;
+  media_url?: string | null;
+  animation_url?: string | null;
+  external_app_url?: string | null;
+};
+
+type Collection = {
+  address: string;
+  name: string | null;
+  symbol: string | null;
+  type: string | null;
+  iconUrl: string | null;
+  items: NftItem[];
+};
+
+type FtBalance = {
+  value: string;
+  token: {
+    address?: string;
+    name?: string | null;
+    symbol?: string | null;
+    decimals?: string | null;
+    type?: string;
+    icon_url?: string | null;
+    exchange_rate?: string | null;
+  };
 };
 
 type Catalog = { matched: ExplorerToken[]; total: number; byType: Record<string, number> };
+
+function ipfsToHttp(u: string | null | undefined): string | null {
+  if (!u) return null;
+  if (u.startsWith('ipfs://')) return `https://ipfs.io/ipfs/${u.slice(7)}`;
+  return u;
+}
+
+function resolveImage(it: NftItem): string | null {
+  return (
+    ipfsToHttp(it.image_url) ??
+    ipfsToHttp(it.media_url) ??
+    ipfsToHttp(it.metadata?.image) ??
+    ipfsToHttp(it.token?.icon_url ?? null)
+  );
+}
+
+function formatBalance(value: string, decimals: string | null | undefined): string {
+  try {
+    const d = decimals ? Number(decimals) : 0;
+    return formatUnits(BigInt(value), d);
+  } catch {
+    return value;
+  }
+}
 
 export default function Home() {
   const { address, isConnected } = useAccount();
@@ -35,13 +97,19 @@ export default function Home() {
   const { signMessageAsync } = useSignMessage();
 
   const [session, setSession] = useState<SessionState | null>(null);
-  const [nfts, setNfts] = useState<NftItem[] | null>(null);
+  const [collections, setCollections] = useState<Collection[] | null>(null);
+  const [nftTotal, setNftTotal] = useState<number>(0);
+  const [tokens, setTokens] = useState<FtBalance[] | null>(null);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
-  const [catalogBusy, setCatalogBusy] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [catalogBusy, setCatalogBusy] = useState(false);
+  const [nftsBusy, setNftsBusy] = useState(false);
+  const [tokensBusy, setTokensBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<NftItem | null>(null);
 
   const onMchVerse = chainId === mchVerse.id;
+  const onWrongChain = isConnected && !onMchVerse;
 
   const mchcMeta = useReadContracts({
     allowFailure: false,
@@ -64,6 +132,21 @@ export default function Home() {
   useEffect(() => {
     void refreshSession();
   }, []);
+
+  const sessionAddress =
+    session && session.authenticated ? session.address : null;
+
+  useEffect(() => {
+    if (!sessionAddress) {
+      setCollections(null);
+      setTokens(null);
+      setNftTotal(0);
+      return;
+    }
+    void loadTokens();
+    void loadNfts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionAddress]);
 
   async function refreshSession() {
     const r = await fetch('/api/auth/me', { cache: 'no-store' });
@@ -104,8 +187,41 @@ export default function Home() {
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
-    setNfts(null);
+    setCollections(null);
+    setTokens(null);
+    setNftTotal(0);
     await refreshSession();
+  }
+
+  async function loadNfts() {
+    setError(null);
+    setNftsBusy(true);
+    try {
+      const r = await fetch('/api/me/nfts', { cache: 'no-store' });
+      if (!r.ok) throw new Error(`nfts failed: ${r.status}`);
+      const j = (await r.json()) as { collections: Collection[]; total: number };
+      setCollections(j.collections);
+      setNftTotal(j.total);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setNftsBusy(false);
+    }
+  }
+
+  async function loadTokens() {
+    setError(null);
+    setTokensBusy(true);
+    try {
+      const r = await fetch('/api/me/tokens', { cache: 'no-store' });
+      if (!r.ok) throw new Error(`tokens failed: ${r.status}`);
+      const j = (await r.json()) as { tokens: FtBalance[] };
+      setTokens(j.tokens);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTokensBusy(false);
+    }
   }
 
   async function loadCatalog(all: boolean) {
@@ -123,31 +239,16 @@ export default function Home() {
     }
   }
 
-  async function loadNfts() {
-    if (!session || !session.authenticated) return;
-    setError(null);
-    try {
-      const r = await fetch(
-        `/api/explorer/addresses/${session.address}/nft?type=ERC-721%2CERC-1155`,
-      );
-      const j = await r.json();
-      setNfts(Array.isArray(j.items) ? j.items : []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  const onWrongChain = isConnected && !onMchVerse;
   const [mchcSymbol, mchcDecimals] = mchcMeta.data ?? [undefined, undefined];
-  const mchcDisplay =
-    mchcBalance.data !== undefined && mchcDecimals !== undefined
-      ? `${formatUnits(mchcBalance.data, mchcDecimals)} ${mchcSymbol ?? 'MCHC'}`
-      : null;
+  const mchcDisplay = useMemo(() => {
+    if (mchcBalance.data === undefined || mchcDecimals === undefined) return null;
+    return `${formatUnits(mchcBalance.data, mchcDecimals)} ${mchcSymbol ?? 'MCHC'}`;
+  }, [mchcBalance.data, mchcDecimals, mchcSymbol]);
 
   return (
     <main
       style={{
-        maxWidth: 760,
+        maxWidth: 960,
         margin: '2rem auto',
         padding: '1rem',
         fontFamily: 'system-ui, sans-serif',
@@ -198,8 +299,11 @@ export default function Home() {
               Signed in as <code>{session.address}</code> (chain {session.chainId})
             </p>
             <button onClick={logout}>Sign out</button>
-            <button onClick={loadNfts} style={{ marginLeft: 8 }}>
-              Load my NFTs from Explorer
+            <button onClick={loadNfts} style={{ marginLeft: 8 }} disabled={nftsBusy}>
+              {nftsBusy ? 'Refreshing NFTs…' : 'Refresh NFTs'}
+            </button>
+            <button onClick={loadTokens} style={{ marginLeft: 8 }} disabled={tokensBusy}>
+              {tokensBusy ? 'Refreshing FTs…' : 'Refresh FTs'}
             </button>
           </>
         ) : (
@@ -263,34 +367,290 @@ export default function Home() {
         )}
       </section>
 
-      {nfts && (
+      {session?.authenticated && (
         <section style={{ marginTop: 24 }}>
-          <h2>5. NFTs ({nfts.length})</h2>
-          {nfts.length === 0 ? (
-            <p>No NFTs found.</p>
+          <h2>5. Fungible tokens — ERC-20 ({tokens?.length ?? 0})</h2>
+          {tokens === null && !tokensBusy ? (
+            <p>—</p>
+          ) : tokensBusy ? (
+            <p>Loading…</p>
+          ) : tokens && tokens.length === 0 ? (
+            <p>No ERC-20 balances.</p>
           ) : (
-            <ul style={{ paddingLeft: 18 }}>
-              {nfts.map((it, i) => {
-                const collection = it.token?.name ?? 'Unknown collection';
-                const symbol = it.token?.symbol;
-                const tokenId = it.id ?? it.token_id ?? '?';
-                const instanceName = it.metadata?.name;
-                return (
-                  <li key={i} style={{ marginBottom: 8 }}>
-                    <strong>{collection}</strong>
-                    {symbol && <> ({symbol})</>} #{tokenId}
-                    {instanceName && <> — {instanceName}</>}
-                    <br />
-                    <small>
-                      <code>{it.token?.address}</code> ({it.token?.type})
-                    </small>
-                  </li>
-                );
-              })}
-            </ul>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', borderBottom: '1px solid #ccc' }}>
+                    <th></th>
+                    <th>Symbol</th>
+                    <th>Name</th>
+                    <th>Balance</th>
+                    <th>Address</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tokens?.map((t) => (
+                    <tr key={t.token.address} style={{ borderBottom: '1px solid #eee' }}>
+                      <td style={{ width: 32 }}>
+                        {t.token.icon_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={ipfsToHttp(t.token.icon_url) ?? undefined}
+                            alt=""
+                            width={24}
+                            height={24}
+                            style={{ borderRadius: 4 }}
+                          />
+                        ) : null}
+                      </td>
+                      <td>
+                        <strong>{t.token.symbol ?? '-'}</strong>
+                      </td>
+                      <td>{t.token.name ?? '-'}</td>
+                      <td>{formatBalance(t.value, t.token.decimals)}</td>
+                      <td>
+                        <code>{t.token.address}</code>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </section>
       )}
+
+      {session?.authenticated && (
+        <section style={{ marginTop: 24 }}>
+          <h2>6. NFTs by collection ({nftTotal})</h2>
+          {collections === null && !nftsBusy ? (
+            <p>—</p>
+          ) : nftsBusy ? (
+            <p>Loading…</p>
+          ) : collections && collections.length === 0 ? (
+            <p>No NFTs.</p>
+          ) : (
+            collections?.map((col) => (
+              <div key={col.address} style={{ marginBottom: 28 }}>
+                <h3 style={{ marginBottom: 0 }}>
+                  {col.name ?? '(no name)'}{' '}
+                  {col.symbol && <span style={{ color: '#666' }}>({col.symbol})</span>}{' '}
+                  <span style={{ color: '#888', fontWeight: 400 }}>
+                    — {col.items.length} items · {col.type}
+                  </span>
+                </h3>
+                <small>
+                  <code>{col.address}</code>
+                </small>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(6, 1fr)',
+                    gap: 8,
+                    marginTop: 10,
+                  }}
+                >
+                  {col.items.map((it, i) => {
+                    const img = resolveImage(it);
+                    const tokenId = it.id ?? it.token_id ?? '?';
+                    return (
+                      <button
+                        key={`${col.address}-${tokenId}-${i}`}
+                        onClick={() => setSelected(it)}
+                        title={it.metadata?.name ?? `#${tokenId}`}
+                        style={{
+                          padding: 4,
+                          border: '1px solid #ddd',
+                          borderRadius: 6,
+                          background: '#fafafa',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'stretch',
+                          gap: 4,
+                        }}
+                      >
+                        <div
+                          style={{
+                            aspectRatio: '1 / 1',
+                            background: '#eee',
+                            borderRadius: 4,
+                            overflow: 'hidden',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: 11,
+                            color: '#888',
+                          }}
+                        >
+                          {img ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={img}
+                              alt={it.metadata?.name ?? `#${tokenId}`}
+                              loading="lazy"
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          ) : (
+                            <span>no image</span>
+                          )}
+                        </div>
+                        <small style={{ textAlign: 'center' }}>#{tokenId}</small>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))
+          )}
+        </section>
+      )}
+
+      {selected && (
+        <NftModal item={selected} onClose={() => setSelected(null)} />
+      )}
     </main>
+  );
+}
+
+function NftModal({ item, onClose }: { item: NftItem; onClose: () => void }) {
+  const img = resolveImage(item);
+  const tokenId = item.id ?? item.token_id ?? '?';
+  const attrs = item.metadata?.attributes ?? [];
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.6)',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#fff',
+          borderRadius: 8,
+          maxWidth: 640,
+          width: '100%',
+          maxHeight: '90vh',
+          overflow: 'auto',
+          padding: 20,
+          position: 'relative',
+        }}
+      >
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            background: 'transparent',
+            border: 'none',
+            fontSize: 20,
+            cursor: 'pointer',
+          }}
+        >
+          ×
+        </button>
+        <h3 style={{ marginTop: 0 }}>
+          {item.token?.name ?? '(no name)'} #{tokenId}
+        </h3>
+        {item.metadata?.name && item.metadata.name !== item.token?.name && (
+          <p style={{ margin: '4px 0', color: '#444' }}>
+            <strong>{item.metadata.name}</strong>
+          </p>
+        )}
+        {img && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={img}
+            alt={item.metadata?.name ?? `#${tokenId}`}
+            style={{ width: '100%', maxHeight: 320, objectFit: 'contain', borderRadius: 6 }}
+          />
+        )}
+        <dl style={{ marginTop: 12, fontSize: 14 }}>
+          <dt><strong>Token ID</strong></dt>
+          <dd>{tokenId}</dd>
+          <dt><strong>Standard</strong></dt>
+          <dd>{item.token?.type ?? item.token_type ?? '-'}</dd>
+          <dt><strong>Quantity</strong></dt>
+          <dd>{item.value ?? '1'}</dd>
+          <dt><strong>Collection</strong></dt>
+          <dd>
+            {item.token?.name ?? '-'} {item.token?.symbol && `(${item.token.symbol})`}
+            <br />
+            <code style={{ fontSize: 12 }}>{item.token?.address}</code>
+          </dd>
+          {item.metadata?.description && (
+            <>
+              <dt><strong>Description</strong></dt>
+              <dd style={{ whiteSpace: 'pre-wrap' }}>{item.metadata.description}</dd>
+            </>
+          )}
+          {item.external_app_url && (
+            <>
+              <dt><strong>External link</strong></dt>
+              <dd>
+                <a href={item.external_app_url} target="_blank" rel="noreferrer">
+                  {item.external_app_url}
+                </a>
+              </dd>
+            </>
+          )}
+        </dl>
+        {attrs.length > 0 && (
+          <>
+            <h4 style={{ marginBottom: 4 }}>Attributes</h4>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, 1fr)',
+                gap: 6,
+                fontSize: 13,
+              }}
+            >
+              {attrs.map((a, i) => (
+                <div
+                  key={i}
+                  style={{
+                    border: '1px solid #eee',
+                    borderRadius: 4,
+                    padding: '4px 6px',
+                  }}
+                >
+                  <div style={{ color: '#666', fontSize: 11 }}>
+                    {a.trait_type ?? '—'}
+                  </div>
+                  <div>{String(a.value ?? '')}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+        <details style={{ marginTop: 16 }}>
+          <summary style={{ cursor: 'pointer', fontSize: 12, color: '#666' }}>
+            Raw JSON
+          </summary>
+          <pre
+            style={{
+              background: '#f5f5f5',
+              padding: 8,
+              borderRadius: 4,
+              fontSize: 11,
+              overflow: 'auto',
+            }}
+          >
+            {JSON.stringify(item, null, 2)}
+          </pre>
+        </details>
+      </div>
+    </div>
   );
 }
