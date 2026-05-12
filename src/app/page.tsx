@@ -8,11 +8,12 @@ import {
   useReadContracts,
   useSignMessage,
 } from 'wagmi';
+import { useQuery } from '@tanstack/react-query';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { SiweMessage } from 'siwe';
-import { erc20Abi, formatUnits } from 'viem';
+import { erc20Abi, formatUnits, isAddress } from 'viem';
 import { mchVerse } from '@/lib/chains';
-import { MCHC_ADDRESS } from '@/lib/tokens';
+import { MCHC_ADDRESS, ERC721_LOOKUP_ABI } from '@/lib/tokens';
 import type { ExplorerToken } from '@/lib/explorerTokens';
 
 type SessionState =
@@ -367,9 +368,11 @@ export default function Home() {
         )}
       </section>
 
+      <NftLookup />
+
       {session?.authenticated && (
         <section style={{ marginTop: 24 }}>
-          <h2>5. Fungible tokens — ERC-20 ({tokens?.length ?? 0})</h2>
+          <h2>6. Fungible tokens — ERC-20 ({tokens?.length ?? 0})</h2>
           {tokens === null && !tokensBusy ? (
             <p>—</p>
           ) : tokensBusy ? (
@@ -422,7 +425,7 @@ export default function Home() {
 
       {session?.authenticated && (
         <section style={{ marginTop: 24 }}>
-          <h2>6. NFTs by collection ({nftTotal})</h2>
+          <h2>7. NFTs by collection ({nftTotal})</h2>
           {collections === null && !nftsBusy ? (
             <p>—</p>
           ) : nftsBusy ? (
@@ -510,6 +513,197 @@ export default function Home() {
         <NftModal item={selected} onClose={() => setSelected(null)} />
       )}
     </main>
+  );
+}
+
+function NftLookup() {
+  const [addrInput, setAddrInput] = useState('');
+  const [tokenIdInput, setTokenIdInput] = useState('');
+  const [target, setTarget] = useState<{ address: `0x${string}`; tokenId: bigint } | null>(
+    null,
+  );
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const meta = useReadContracts({
+    allowFailure: true,
+    contracts: target
+      ? [
+          {
+            address: target.address,
+            abi: ERC721_LOOKUP_ABI,
+            functionName: 'name',
+            chainId: mchVerse.id,
+          },
+          {
+            address: target.address,
+            abi: ERC721_LOOKUP_ABI,
+            functionName: 'symbol',
+            chainId: mchVerse.id,
+          },
+        ]
+      : [],
+    query: { enabled: !!target },
+  });
+
+  const owner = useReadContract({
+    address: target?.address,
+    abi: ERC721_LOOKUP_ABI,
+    functionName: 'ownerOf',
+    args: target ? [target.tokenId] : undefined,
+    chainId: mchVerse.id,
+    query: { enabled: !!target, retry: false },
+  });
+
+  const uri = useReadContract({
+    address: target?.address,
+    abi: ERC721_LOOKUP_ABI,
+    functionName: 'tokenURI',
+    args: target ? [target.tokenId] : undefined,
+    chainId: mchVerse.id,
+    query: { enabled: !!target, retry: false },
+  });
+
+  const metadataQ = useQuery({
+    queryKey: [
+      'nft-meta',
+      target?.address ?? '',
+      target?.tokenId.toString() ?? '',
+      uri.data ?? '',
+    ],
+    queryFn: async () => {
+      const u = uri.data as string | undefined;
+      if (!u) return null;
+      const url = u.startsWith('ipfs://') ? `https://ipfs.io/ipfs/${u.slice(7)}` : u;
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`metadata fetch ${r.status}`);
+      return r.json();
+    },
+    enabled: !!uri.data,
+    retry: false,
+  });
+
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setFormError(null);
+    const a = addrInput.trim();
+    if (!isAddress(a)) {
+      setFormError('Invalid contract address');
+      return;
+    }
+    let id: bigint;
+    try {
+      id = BigInt(tokenIdInput.trim());
+    } catch {
+      setFormError('Invalid token id');
+      return;
+    }
+    setTarget({ address: a as `0x${string}`, tokenId: id });
+  }
+
+  const nameResult = meta.data?.[0];
+  const symbolResult = meta.data?.[1];
+  const explorerBase =
+    process.env.NEXT_PUBLIC_EXPLORER_BASE ?? 'https://explorer.oasys.mycryptoheroes.net';
+
+  return (
+    <section style={{ marginTop: 24 }}>
+      <h2>5. NFT owner lookup</h2>
+      <p>
+        Reads <code>ownerOf(tokenId)</code> on any ERC-721 directly via MCH Verse RPC —
+        useful when an NFT is missing from the Explorer index. Find a contract address in
+        section 4 (catalog) and paste it below with the token ID.
+      </p>
+      <form
+        onSubmit={onSubmit}
+        style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}
+      >
+        <input
+          placeholder="Contract address (0x…)"
+          value={addrInput}
+          onChange={(e) => setAddrInput(e.target.value)}
+          style={{ flex: 1, minWidth: 320, padding: '4px 6px' }}
+        />
+        <input
+          placeholder="Token ID (e.g. 50120001)"
+          value={tokenIdInput}
+          onChange={(e) => setTokenIdInput(e.target.value)}
+          style={{ width: 200, padding: '4px 6px' }}
+        />
+        <button type="submit">Lookup</button>
+      </form>
+      {formError && <p style={{ color: 'red' }}>{formError}</p>}
+      {target && (
+        <div style={{ marginTop: 12, fontSize: 14 }}>
+          <p>
+            Contract:{' '}
+            <a
+              href={`${explorerBase}/address/${target.address}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <code>{target.address}</code>
+            </a>
+            <br />
+            Collection:{' '}
+            <strong>
+              {nameResult?.status === 'success' ? String(nameResult.result) : '-'}
+            </strong>{' '}
+            {symbolResult?.status === 'success' && (
+              <span>({String(symbolResult.result)})</span>
+            )}
+            <br />
+            Token ID: <code>{target.tokenId.toString()}</code>
+          </p>
+          <p>
+            Owner:{' '}
+            {owner.isLoading ? (
+              'Loading…'
+            ) : owner.error ? (
+              <span style={{ color: 'red' }}>RPC error: {owner.error.message}</span>
+            ) : owner.data ? (
+              <a
+                href={`${explorerBase}/address/${owner.data}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <code>{String(owner.data)}</code>
+              </a>
+            ) : (
+              '-'
+            )}
+          </p>
+          <p>
+            tokenURI:{' '}
+            {uri.isLoading ? (
+              'Loading…'
+            ) : uri.error ? (
+              <span style={{ color: 'red' }}>{uri.error.message}</span>
+            ) : (
+              <code style={{ wordBreak: 'break-all' }}>{String(uri.data ?? '-')}</code>
+            )}
+          </p>
+          {metadataQ.isFetching && <p>Loading metadata…</p>}
+          {metadataQ.error && (
+            <p style={{ color: 'red' }}>metadata: {String(metadataQ.error)}</p>
+          )}
+          {metadataQ.data && (
+            <details>
+              <summary style={{ cursor: 'pointer' }}>Metadata JSON</summary>
+              <pre
+                style={{
+                  background: '#f5f5f5',
+                  padding: 8,
+                  fontSize: 11,
+                  overflow: 'auto',
+                }}
+              >
+                {JSON.stringify(metadataQ.data, null, 2)}
+              </pre>
+            </details>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 

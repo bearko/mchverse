@@ -4,7 +4,7 @@ import { readSession, SESSION_COOKIE } from '@/lib/session';
 
 const BASE =
   process.env.NEXT_PUBLIC_EXPLORER_BASE ?? 'https://explorer.oasys.mycryptoheroes.net';
-const MAX_PAGES = 30;
+const MAX_PAGES = 100;
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
