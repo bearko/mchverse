@@ -4,7 +4,7 @@ import { SiweMessage } from 'siwe';
 import { NONCE_COOKIE, verifyNonce } from '@/lib/nonceStore';
 import { issueSession, SESSION_COOKIE } from '@/lib/session';
 
-const EXPECTED_CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? 29548);
+const EXPECTED_CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? 420);
 
 export async function POST(req: NextRequest) {
   const { message, signature } = (await req.json()) as {

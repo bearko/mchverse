@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { readSession, SESSION_COOKIE } from '@/lib/session';
 
 const BASE =
-  process.env.NEXT_PUBLIC_EXPLORER_BASE ?? 'https://explorer.oasys.mycryptoheroes.net';
+  process.env.NEXT_PUBLIC_EXPLORER_BASE ?? 'https://explorer.oasys.sand.mchdfgh.xyz';
 
 export const dynamic = 'force-dynamic';
 

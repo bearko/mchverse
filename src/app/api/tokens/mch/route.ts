@@ -21,7 +21,8 @@ export async function GET(req: NextRequest) {
 
   try {
     const result = await enumerateMchTokens({
-      explorerBase: process.env.NEXT_PUBLIC_EXPLORER_BASE,
+      explorerBase:
+        process.env.NEXT_PUBLIC_EXPLORER_BASE ?? 'https://explorer.oasys.sand.mchdfgh.xyz',
       types,
       keywords,
       maxPages,

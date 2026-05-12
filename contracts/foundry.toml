@@ -15,8 +15,14 @@ runs = 64
 
 [rpc_endpoints]
 local = "http://127.0.0.1:8545"
-mchverse = "${RPC_URL}"
+testnet = "${RPC_URL_TESTNET}"
+mainnet = "${RPC_URL_MAINNET}"
 
 [profile.local]
 
-[profile.mchverse]
+[profile.testnet]
+# MCH Verse Sandbox / Testnet
+# id = 420, rpc = https://rpc.oasys.sand.mchdfgh.xyz
+
+[profile.mainnet]
+# MCH Verse mainnet (chainId 29548, allowlist)

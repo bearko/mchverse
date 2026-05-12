@@ -7,8 +7,9 @@
     "build": "mud build",
     "test": "mud test",
     "dev": "mud dev-contracts",
-    "deploy:local": "mud deploy --profile local",
-    "deploy:mchverse": "mud deploy --profile mchverse",
+    "deploy:local": "mud deploy --profile local --rpc http://127.0.0.1:8545",
+    "deploy:testnet": "mud deploy --profile testnet --rpc $RPC_URL_TESTNET",
+    "deploy:mainnet": "mud deploy --profile mainnet --rpc $RPC_URL_MAINNET",
     "clean": "rm -rf out cache src/codegen broadcast"
   },
   "dependencies": {
