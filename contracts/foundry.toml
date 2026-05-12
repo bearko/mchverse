@@ -1,0 +1,22 @@
+[profile.default]
+src = "src"
+out = "out"
+test = "test"
+script = "script"
+solc = "0.8.24"
+optimizer = true
+optimizer_runs = 200
+allow_paths = ["../node_modules", "node_modules"]
+fs_permissions = [{ access = "read", path = "./" }]
+extra_output_files = ["abi", "evm.bytecode"]
+
+[profile.default.fuzz]
+runs = 64
+
+[rpc_endpoints]
+local = "http://127.0.0.1:8545"
+mchverse = "${RPC_URL}"
+
+[profile.local]
+
+[profile.mchverse]

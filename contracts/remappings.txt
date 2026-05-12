@@ -1,0 +1,5 @@
+@latticexyz/world/=node_modules/@latticexyz/world/
+@latticexyz/store/=node_modules/@latticexyz/store/
+@latticexyz/schema-type/=node_modules/@latticexyz/schema-type/
+@latticexyz/world-modules/=node_modules/@latticexyz/world-modules/
+forge-std/=node_modules/forge-std/src/
