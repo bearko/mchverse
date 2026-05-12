@@ -1,0 +1,63 @@
+{
+  "name": "MCHVerse Game Dev",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "configureZshAsDefaultShell": true,
+      "username": "node"
+    },
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "remoteEnv": {
+    "PATH": "${containerEnv:HOME}/.foundry/bin:${containerEnv:HOME}/.local/bin:${containerEnv:PATH}"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "NomicFoundation.hardhat-solidity",
+        "JuanBlanco.solidity",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "GraphQL.vscode-graphql",
+        "GraphQL.vscode-graphql-syntax",
+        "bradlc.vscode-tailwindcss"
+      ],
+      "settings": {
+        "editor.formatOnSave": false,
+        "[solidity]": {
+          "editor.defaultFormatter": "NomicFoundation.hardhat-solidity"
+        },
+        "files.exclude": {
+          "**/node_modules": true,
+          "**/.next": true,
+          "**/out": true,
+          "**/cache": true,
+          "**/src/codegen": true,
+          "**/.turbo": true
+        },
+        "search.exclude": {
+          "**/node_modules": true,
+          "**/.next": true,
+          "**/out": true,
+          "**/cache": true,
+          "**/src/codegen": true
+        }
+      }
+    }
+  },
+  "forwardPorts": [3000, 8545, 13690, 13691],
+  "portsAttributes": {
+    "3000": { "label": "Next.js dev", "onAutoForward": "openBrowser" },
+    "8545": { "label": "Anvil RPC" },
+    "13690": { "label": "MUD store-sync" },
+    "13691": { "label": "MUD indexer GraphQL" }
+  },
+  "remoteUser": "node",
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "4gb",
+    "storage": "32gb"
+  }
+}
