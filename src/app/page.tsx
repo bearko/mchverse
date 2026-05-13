@@ -261,6 +261,11 @@ export default function Home() {
         Expected chain: <code>{mchVerse.id}</code> (MCH Verse) — Connected:{' '}
         <code>{chainId ?? '-'}</code>
       </p>
+      <p>
+        <a href="/game" style={{ color: '#2563eb' }}>
+          → Open the on-chain SLG (testnet PoC)
+        </a>
+      </p>
 
       <section style={{ marginTop: 16 }}>
         <h2>1. Wallet</h2>

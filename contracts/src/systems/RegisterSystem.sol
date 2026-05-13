@@ -18,11 +18,11 @@ contract RegisterSystem is System {
   error WrongHeroContract();
   error NotHeroOwner();
   error OutOfBounds();
-  error SpawnOccupied();
 
   function register(uint256 heroTokenId, int32 spawnX, int32 spawnY) public {
     address player = _msgSender();
-    if (PlayerHero.getTokenId(player) != 0) revert AlreadyRegistered();
+    bytes32 armyKey = Coords.armyId(player);
+    if (Army.getStrength(armyKey) > 0) revert AlreadyRegistered();
 
     GameConfigData memory cfg = GameConfig.get(0);
     if (
@@ -31,17 +31,14 @@ contract RegisterSystem is System {
       uint32(spawnY) >= uint32(cfg.mapHeight)
     ) revert OutOfBounds();
 
-    if (IERC721Like(cfg.heroContract).ownerOf(heroTokenId) != player) revert NotHeroOwner();
-
-    bytes32 spawnTile = Coords.tileId(spawnX, spawnY);
-    if (Tile.getTerrain(spawnTile) == 0) {
-      // ok
+    // Hero NFT ownership is enforced only when a hero contract is configured
+    // (set on testnet/mainnet via PostDeploy). Address(0) = "dev mode".
+    if (cfg.heroContract != address(0)) {
+      if (IERC721Like(cfg.heroContract).ownerOf(heroTokenId) != player) revert NotHeroOwner();
+      PlayerHero.set(player, cfg.heroContract, heroTokenId);
     }
 
-    PlayerHero.set(player, cfg.heroContract, heroTokenId);
     PlayerGold.set(player, 100);
-
-    bytes32 aId = Coords.armyId(player);
-    Army.set(aId, player, 100, spawnX, spawnY);
+    Army.set(armyKey, player, 100, spawnX, spawnY);
   }
 }
